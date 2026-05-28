@@ -51,7 +51,7 @@ def process_video_job(
         job.status = "completed"
         job.progress = 100
         job.total_frames = result.get("total_frames")
-        job.processed_frames = result.get("total_frames")
+        job.processed_frames = result.get("processed_frames") or result.get("total_frames")
         job.processing_time_ms = result.get("processing_time_ms")
         job.result_json_path = result_path
         job.completed_at = datetime.now()
@@ -59,6 +59,9 @@ def process_video_job(
         db.commit()
 
     except Exception as e:
+        db.rollback()
+        print(f"[VIDEO JOB FAILED] job_id={job_id} error={e}")
+
         job = db.query(DetectionJob).filter(
             DetectionJob.job_id == job_id
         ).first()

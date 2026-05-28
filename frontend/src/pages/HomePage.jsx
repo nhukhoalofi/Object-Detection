@@ -28,7 +28,13 @@ export default function HomePage() {
 
   useEffect(() => {
     healthApi.check()
-      .then(() => setBackendHealth('online'))
+      .then((res) => {
+        if (res?.success === true && res?.data?.status === 'ok') {
+          setBackendHealth('online')
+        } else {
+          setBackendHealth('offline')
+        }
+      })
       .catch(() => setBackendHealth('offline'))
   }, [])
 
