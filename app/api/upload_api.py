@@ -24,7 +24,7 @@ def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
             original_name=saved["original_name"],
             stored_name=saved["stored_name"],
             file_path=saved["file_path"],
-            file_url=f"/uploads/images/{saved['stored_name']}",
+            file_url=f"/{saved['file_url']}",
             media_type="image",
             mime_type=file.content_type,
             file_size=saved["file_size"]
@@ -68,7 +68,7 @@ def upload_video(file: UploadFile = File(...), db: Session = Depends(get_db)):
             original_name=saved["original_name"],
             stored_name=saved["stored_name"],
             file_path=saved["file_path"],
-            file_url=f"/uploads/videos/{saved['stored_name']}",
+            file_url=f"/{saved['file_url']}",
             media_type="video",
             mime_type=file.content_type,
             file_size=saved["file_size"]

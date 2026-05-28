@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 import time
-from typing import Any
+from typing import Any, Callable
 
 import cv2
 from ultralytics import YOLO
@@ -135,6 +135,33 @@ def prepare_frame_for_video_writer(frame, frame_index: int, width: int, height: 
         )
 
     return frame
+
+
+def build_video_progress(total_frames: int, processed_frames: int, stage: str) -> dict:
+    safe_total_frames = max(int(total_frames or 0), 0)
+    safe_processed_frames = max(int(processed_frames or 0), 0)
+
+    if stage == "transcoding":
+        progress = 96
+    elif stage == "finalizing":
+        progress = 99
+    elif safe_total_frames > 0:
+        progress = int((safe_processed_frames / safe_total_frames) * 95)
+        progress = max(1, min(95, progress))
+    else:
+        progress = 1
+
+    return {
+        "stage": stage,
+        "total_frames": safe_total_frames,
+        "processed_frames": safe_processed_frames,
+        "progress": progress
+    }
+
+
+def emit_video_progress(progress_callback: Callable[[dict], None] | None, payload: dict) -> None:
+    if progress_callback:
+        progress_callback(payload)
 
 
 def estimate_3d_from_bbox(bbox: dict, image_width: int, image_height: int) -> dict:
@@ -304,7 +331,8 @@ def detect_video(
     iou: float = 0.45,
     enable_tracking: bool = True,
     enable_3d: bool = False,
-    output_path: str | None = None
+    output_path: str | None = None,
+    progress_callback: Callable[[dict], None] | None = None
 ) -> dict:
     start_time = time.time()
 
@@ -325,6 +353,11 @@ def detect_video(
         raise RuntimeError(
             f"Invalid input video dimensions: width={video_width}, height={video_height}"
         )
+
+    emit_video_progress(
+        progress_callback,
+        build_video_progress(total_frames=total_frames, processed_frames=0, stage="starting")
+    )
 
     resolved_model_path = resolve_model_path(model_path)
     model = YOLO(resolved_model_path)
@@ -424,6 +457,16 @@ def detect_video(
                 "objects": objects
             })
 
+            processed_frames = frame_index + 1
+            emit_video_progress(
+                progress_callback,
+                build_video_progress(
+                    total_frames=total_frames,
+                    processed_frames=processed_frames,
+                    stage="detecting"
+                )
+            )
+
             print(f"[VIDEO DETECTION] Frame={frame_index} | Objects={len(objects)}")
     finally:
         if video_writer is not None:
@@ -444,11 +487,29 @@ def detect_video(
         if temp_file_size <= 0:
             raise RuntimeError("Temporary video file was not created or is empty")
 
+        emit_video_progress(
+            progress_callback,
+            build_video_progress(
+                total_frames=total_frames,
+                processed_frames=processed_frames,
+                stage="transcoding"
+            )
+        )
+
         transcode_to_browser_mp4(temp_output_path, output_path)
 
         final_file_size = get_file_size(output_path)
         print(
             f"[VIDEO OUTPUT] final={output_path} final_file_size={final_file_size}"
+        )
+
+        emit_video_progress(
+            progress_callback,
+            build_video_progress(
+                total_frames=total_frames,
+                processed_frames=processed_frames,
+                stage="finalizing"
+            )
         )
 
     processing_time_ms = int((time.time() - start_time) * 1000)

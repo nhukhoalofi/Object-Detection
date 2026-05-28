@@ -1,9 +1,9 @@
 function toStaticUrl(url) {
   if (!url) return null
-  if (url.startsWith('http')) return url
+  if (url.startsWith('http')) return encodeURI(url)
   const base = import.meta.env.VITE_STATIC_BASE_URL || 'http://localhost:8000'
   const separator = url.startsWith('/') ? '' : '/'
-  return `${base}${separator}${url}`
+  return encodeURI(`${base}${separator}${url}`)
 }
 
 function toNumber(value) {

@@ -109,7 +109,7 @@ export function useDetectionJob(jobId) {
       pollJob(id)
       const intervalId = setInterval(() => {
         pollJob(id)
-      }, 1500)
+      }, 1000)
       intervalRef.current = intervalId
       return intervalId
     },
