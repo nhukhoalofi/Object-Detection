@@ -1,0 +1,23 @@
+{
+  "model_name": "yolo11n_traffic_v1",
+  "base_model": "yolo11n.pt",
+  "task": "object_detection",
+  "dataset": "Roboflow Traffic-Person-Detection v3 (158 images)",
+  "classes": {
+    "0": "person",
+    "1": "car",
+    "2": "bicycle"
+  },
+  "image_size": 640,
+  "epochs": 40,
+  "batch_size": 8,
+  "metrics": {
+    "precision": 0.7652,
+    "recall": 0.4997,
+    "map50": 0.5653,
+    "map50_95": 0.2577
+  },
+  "weight_file": "best.pt",
+  "created_at": "2026-05-28",
+  "note": "Fine-tuned YOLO11n — person/car/bicycle detection + ByteTrack tracking"
+}
