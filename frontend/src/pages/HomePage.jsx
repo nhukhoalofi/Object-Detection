@@ -119,14 +119,30 @@ export default function HomePage() {
   const processingTime = displayResult?.processingTimeMs ?? displayResult?.raw?.processing_time_ms ?? 0
 
   // Downloads
-  const handleDownloadMedia = () => {
+  const handleDownloadMedia = async () => {
     const downloadUrl = downloadVideoUrl || downloadImageUrl || previewUrl
     if (!downloadUrl) return
-    const a = document.createElement('a')
-    a.href = downloadUrl
-    a.download = `detecttrack-annotated-${fileType === 'video' ? 'video.mp4' : 'image.png'}`
-    a.target = '_blank'
-    a.click()
+    const filename = `detecttrack-annotated-${fileType === 'video' ? 'video.mp4' : 'image.png'}`
+
+    try {
+      const response = await fetch(downloadUrl)
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`)
+      }
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch (err) {
+      console.error('[DetectTrack] Download failed:', err)
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+    }
   }
   const tabs = [
     {
@@ -157,7 +173,14 @@ export default function HomePage() {
       label: 'Trực quan hóa 3D',
       content: (
         <Card title="Trực quan hóa 3D">
-          <ThreeDPanel objects={displayObjects} />
+          <ThreeDPanel
+            objects={displayObjects}
+            frames={displayResult?.frames}
+            fps={fps}
+            mediaType={displayResult?.mediaType ?? fileType}
+            imageWidth={imageWidth}
+            imageHeight={imageHeight}
+          />
         </Card>
       )
     }

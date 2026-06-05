@@ -132,15 +132,14 @@ export default function DetectionOptions({ onStart, loading = false, fileType = 
 
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-neutral-400">
+                <span className="text-sm font-medium text-neutral-800">
                   Bật bounding box 3D
                 </span>
-                <span className="text-[11px] text-neutral-400 mt-0.5">Đang chờ API Backend</span>
+                <span className="text-[11px] text-neutral-500 mt-0.5">Dựng scene 3D từ bbox/depth</span>
               </div>
               <ToggleSwitch
-                checked={false}
-                onChange={() => {}}
-                disabled
+                checked={options.enable_3d}
+                onChange={(v) => set('enable_3d', v)}
               />
             </div>
 
