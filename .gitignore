@@ -22,10 +22,8 @@ backend/uploads/
 backend/outputs/
 
 # Model weights
-weights/*.pt
 weights/*.onnx
 weights/*.engine
-backend/weights/*.pt
 backend/weights/*.onnx
 backend/weights/*.engine
 
@@ -44,12 +42,9 @@ Thumbs.db
 
 # Logs
 # AI model weights
-*.pt
 *.onnx
 *.engine
-weights/*.pt
 weights/*.onnx
 weights/*.engine
-backend/weights/*.pt
 backend/weights/*.onnx
 backend/weights/*.engine

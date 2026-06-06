@@ -16,6 +16,59 @@ ALLOWED_CLASS_MAP = {
 }
 
 DEFAULT_VIDEO_FPS = 30.0
+CAMERA_VERTICAL_FOV_DEGREES = 55.0
+MIN_DEPTH_METERS = 0.8
+MAX_DEPTH_METERS = 60.0
+
+CLASS_ALIASES = {
+    "person": "person",
+    "people": "person",
+    "pedestrian": "person",
+    "car": "car",
+    "auto": "car",
+    "automobile": "car",
+    "bicycle": "bicycle",
+    "bike": "bicycle"
+}
+
+CLASS_METRIC_DIMENSIONS = {
+    "person": {
+        "width": 0.6,
+        "height": 1.7,
+        "depth": 0.45
+    },
+    "car": {
+        "width": 1.8,
+        "height": 1.5,
+        "depth": 4.2
+    },
+    "bicycle": {
+        "width": 0.55,
+        "height": 1.15,
+        "depth": 1.8
+    }
+}
+
+CLASS_DRAW_COLORS = {
+    "person": (255, 180, 60),
+    "car": (30, 180, 255),
+    "bicycle": (100, 220, 100)
+}
+
+CUBOID_EDGE_INDEXES = [
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 0),
+    (4, 5),
+    (5, 6),
+    (6, 7),
+    (7, 4),
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7)
+]
 
 
 def resolve_model_path(model_path: str) -> str:
@@ -164,35 +217,197 @@ def emit_video_progress(progress_callback: Callable[[dict], None] | None, payloa
         progress_callback(payload)
 
 
-def estimate_3d_from_bbox(bbox: dict, image_width: int, image_height: int) -> dict:
-    bbox_height = max(float(bbox["height"]), 1.0)
-    bbox_width = max(float(bbox["width"]), 1.0)
+def clamp_float(value: float, minimum: float, maximum: float) -> float:
+    return min(max(value, minimum), maximum)
 
-    center_x = (bbox["x1"] + bbox["x2"]) / 2
-    center_y = (bbox["y1"] + bbox["y2"]) / 2
 
-    depth = round(1000.0 / bbox_height, 3)
+def normalize_class_label(label: str) -> str:
+    normalized = str(label or "").strip().lower()
+    return CLASS_ALIASES.get(normalized, normalized)
 
-    world_x = round((center_x - image_width / 2) / image_width * depth, 3)
-    world_y = round((center_y - image_height / 2) / image_height * depth, 3)
-    world_z = depth
+
+def get_camera_intrinsics(image_width: int, image_height: int) -> dict:
+    safe_width = max(float(image_width), 1.0)
+    safe_height = max(float(image_height), 1.0)
+    vertical_fov_radians = math.radians(CAMERA_VERTICAL_FOV_DEGREES)
+    focal = safe_height / (2.0 * math.tan(vertical_fov_radians / 2.0))
 
     return {
-        "depth": depth,
+        "fx": focal,
+        "fy": focal,
+        "cx": safe_width / 2.0,
+        "cy": safe_height / 2.0
+    }
+
+
+def get_class_dimensions(label: str, bbox: dict, image_height: int) -> dict:
+    if label in CLASS_METRIC_DIMENSIONS:
+        return CLASS_METRIC_DIMENSIONS[label]
+
+    bbox_height_ratio = float(bbox["height"]) / max(float(image_height), 1.0)
+    visual_height = clamp_float(1.1 + bbox_height_ratio * 3.2, 1.2, 3.4)
+
+    return {
+        "width": 1.0,
+        "height": visual_height,
+        "depth": 0.8
+    }
+
+
+def project_point(point: dict, intrinsics: dict) -> dict | None:
+    z = float(point["z"])
+
+    if z <= 0.05 or not math.isfinite(z):
+        return None
+
+    x = intrinsics["fx"] * float(point["x"]) / z + intrinsics["cx"]
+    y = intrinsics["fy"] * float(point["y"]) / z + intrinsics["cy"]
+
+    if not math.isfinite(x) or not math.isfinite(y):
+        return None
+
+    return {
+        "x": round(x, 2),
+        "y": round(y, 2)
+    }
+
+
+def build_projected_cuboid(
+    world_x: float,
+    camera_bottom_y: float,
+    depth: float,
+    dimensions: dict,
+    intrinsics: dict
+) -> list[dict] | None:
+    half_width = float(dimensions["width"]) / 2.0
+    half_depth = float(dimensions["depth"]) / 2.0
+    height = float(dimensions["height"])
+
+    front_z = max(depth - half_depth, 0.05)
+    back_z = max(depth + half_depth, front_z + 0.05)
+    top_y = camera_bottom_y - height
+    bottom_y = camera_bottom_y
+
+    corners_3d = [
+        {"x": world_x - half_width, "y": top_y, "z": front_z},
+        {"x": world_x + half_width, "y": top_y, "z": front_z},
+        {"x": world_x + half_width, "y": bottom_y, "z": front_z},
+        {"x": world_x - half_width, "y": bottom_y, "z": front_z},
+        {"x": world_x - half_width, "y": top_y, "z": back_z},
+        {"x": world_x + half_width, "y": top_y, "z": back_z},
+        {"x": world_x + half_width, "y": bottom_y, "z": back_z},
+        {"x": world_x - half_width, "y": bottom_y, "z": back_z}
+    ]
+
+    projected = [project_point(point, intrinsics) for point in corners_3d]
+
+    if any(point is None for point in projected):
+        return None
+
+    return projected
+
+
+def estimate_3d_from_bbox(
+    bbox: dict,
+    image_width: int,
+    image_height: int,
+    label: str
+) -> dict:
+    bbox_height = max(float(bbox["height"]), 1.0)
+
+    center_x = (bbox["x1"] + bbox["x2"]) / 2
+    intrinsics = get_camera_intrinsics(image_width, image_height)
+    dimensions = get_class_dimensions(label, bbox, image_height)
+    raw_depth = dimensions["height"] * intrinsics["fy"] / bbox_height
+    depth = clamp_float(raw_depth, MIN_DEPTH_METERS, MAX_DEPTH_METERS)
+
+    world_x = (center_x - intrinsics["cx"]) * depth / intrinsics["fx"]
+    camera_bottom_y = (bbox["y2"] - intrinsics["cy"]) * depth / intrinsics["fy"]
+    projected_corners_2d = build_projected_cuboid(
+        world_x=world_x,
+        camera_bottom_y=camera_bottom_y,
+        depth=depth,
+        dimensions=dimensions,
+        intrinsics=intrinsics
+    )
+
+    return {
+        "depth": round(depth, 3),
         "bbox_3d": {
             "center": {
-                "x": world_x,
-                "y": world_y,
-                "z": world_z
+                "x": round(world_x, 3),
+                "y": round(float(dimensions["height"]) / 2.0, 3),
+                "z": round(depth, 3)
             },
             "size": {
-                "width": round(bbox_width / 100.0, 3),
-                "height": round(bbox_height / 100.0, 3),
-                "depth": 0.6
+                "width": round(float(dimensions["width"]), 3),
+                "height": round(float(dimensions["height"]), 3),
+                "depth": round(float(dimensions["depth"]), 3)
             },
-            "rotation_y": 0.0
+            "rotation_y": 0.0,
+            "projected_corners_2d": projected_corners_2d
         }
     }
+
+
+def to_cv_point(point: dict) -> tuple[int, int]:
+    return int(round(point["x"])), int(round(point["y"]))
+
+
+def draw_3d_bbox_overlay(image, objects: list[dict]):
+    if image is None or not objects:
+        return image
+
+    frame_height, frame_width = image.shape[:2]
+    thickness = max(2, round(min(frame_width, frame_height) / 420))
+    font_scale = max(0.45, min(frame_width, frame_height) / 1500)
+    font_thickness = max(1, thickness - 1)
+
+    for obj in objects:
+        bbox_3d = obj.get("bbox_3d") or {}
+        corners = bbox_3d.get("projected_corners_2d")
+
+        if not corners or len(corners) < 8:
+            continue
+
+        color = CLASS_DRAW_COLORS.get(obj.get("label"), (255, 255, 255))
+        points = [to_cv_point(point) for point in corners]
+
+        for edge_index, (start, end) in enumerate(CUBOID_EDGE_INDEXES):
+            line_thickness = thickness + 1 if edge_index < 4 else thickness
+            cv2.line(
+                image,
+                points[start],
+                points[end],
+                color,
+                line_thickness,
+                cv2.LINE_AA
+            )
+
+        label = f"3D {obj.get('depth', 0):.1f}m"
+        text_origin = points[0][0], max(points[0][1] - 8, 16)
+        cv2.putText(
+            image,
+            label,
+            text_origin,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            (0, 0, 0),
+            font_thickness + 3,
+            cv2.LINE_AA
+        )
+        cv2.putText(
+            image,
+            label,
+            text_origin,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale,
+            color,
+            font_thickness,
+            cv2.LINE_AA
+        )
+
+    return image
 
 
 def build_object_from_box(
@@ -204,7 +419,8 @@ def build_object_from_box(
     enable_3d: bool = False
 ):
     raw_class_id = int(box.cls[0])
-    label = model_names.get(raw_class_id, str(raw_class_id))
+    raw_label = model_names.get(raw_class_id, str(raw_class_id))
+    label = normalize_class_label(raw_label)
 
     if label not in ALLOWED_CLASS_MAP:
         return None
@@ -241,7 +457,12 @@ def build_object_from_box(
     }
 
     if enable_3d:
-        estimated = estimate_3d_from_bbox(bbox_2d, image_width, image_height)
+        estimated = estimate_3d_from_bbox(
+            bbox=bbox_2d,
+            image_width=image_width,
+            image_height=image_height,
+            label=label
+        )
         obj["depth"] = estimated["depth"]
         obj["bbox_3d"] = estimated["bbox_3d"]
 
@@ -271,16 +492,6 @@ def detect_image(
     result = results[0]
     image_height, image_width = result.orig_shape
 
-    result_image_url = None
-
-    if output_path:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        annotated_image = result.plot()
-        cv2.imwrite(output_path, annotated_image)
-
-        result_image_url = "/outputs/images/" + os.path.basename(output_path)
-
     objects = []
 
     for box in result.boxes:
@@ -294,6 +505,18 @@ def detect_image(
 
         if obj:
             objects.append(obj)
+
+    result_image_url = None
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        annotated_image = result.plot()
+        if enable_3d:
+            annotated_image = draw_3d_bbox_overlay(annotated_image, objects)
+        cv2.imwrite(output_path, annotated_image)
+
+        result_image_url = "/outputs/images/" + os.path.basename(output_path)
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
@@ -441,6 +664,8 @@ def detect_video(
 
             if video_writer is not None:
                 annotated_frame = result.plot()
+                if enable_3d:
+                    annotated_frame = draw_3d_bbox_overlay(annotated_frame, objects)
                 annotated_frame = prepare_frame_for_video_writer(
                     frame=annotated_frame,
                     frame_index=frame_index,
