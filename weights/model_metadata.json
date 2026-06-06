@@ -1,23 +1,50 @@
 {
-  "model_name": "yolo11n_traffic_v1",
-  "base_model": "yolo11n.pt",
-  "task": "object_detection",
-  "dataset": "Roboflow Traffic-Person-Detection v3 (158 images)",
-  "classes": {
-    "0": "person",
-    "1": "car",
-    "2": "bicycle"
+  "models": [
+    {
+      "model_name": "bdd100k_detection_v1",
+      "weight_file": "bdd100k_best.pt",
+      "task": "object_detection",
+      "dataset": "BDD100K YOLO prepared",
+      "classes": {
+        "0": "person",
+        "1": "rider",
+        "2": "car",
+        "3": "bus",
+        "4": "truck",
+        "5": "bike",
+        "6": "motor",
+        "7": "traffic light",
+        "8": "traffic sign",
+        "9": "train"
+      },
+      "class_count": 10,
+      "keypoint_shape": null,
+      "note": "Object detection model used for bbox/class confidence."
+    },
+    {
+      "model_name": "human_pose_v1",
+      "weight_file": "best.pt",
+      "task": "pose_estimation",
+      "dataset": "human-keypoint-2-srekv-lle4g-1",
+      "classes": {
+        "0": "person"
+      },
+      "class_count": 1,
+      "keypoint_shape": [
+        17,
+        3
+      ],
+      "keypoint_format": [
+        "x",
+        "y",
+        "confidence"
+      ],
+      "note": "Human pose model used for person keypoints."
+    }
+  ],
+  "defaults": {
+    "detection_model": "bdd100k_best.pt",
+    "pose_model": "best.pt"
   },
-  "image_size": 640,
-  "epochs": 40,
-  "batch_size": 8,
-  "metrics": {
-    "precision": 0.7652,
-    "recall": 0.4997,
-    "map50": 0.5653,
-    "map50_95": 0.2577
-  },
-  "weight_file": "best.pt",
-  "created_at": "2026-05-28",
-  "note": "Fine-tuned YOLO11n — person/car/bicycle detection + ByteTrack tracking"
+  "updated_at": "2026-06-06"
 }

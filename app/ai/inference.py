@@ -11,8 +11,15 @@ from ultralytics import YOLO
 
 ALLOWED_CLASS_MAP = {
     "person": 0,
-    "car": 1,
-    "bicycle": 2
+    "rider": 1,
+    "car": 2,
+    "bus": 3,
+    "truck": 4,
+    "bike": 5,
+    "motor": 6,
+    "traffic light": 7,
+    "traffic sign": 8,
+    "train": 9
 }
 
 DEFAULT_VIDEO_FPS = 30.0
@@ -27,8 +34,14 @@ CLASS_ALIASES = {
     "car": "car",
     "auto": "car",
     "automobile": "car",
-    "bicycle": "bicycle",
-    "bike": "bicycle"
+    "bicycle": "bike",
+    "bike": "bike",
+    "motorcycle": "motor",
+    "motorbike": "motor",
+    "trafficlight": "traffic light",
+    "traffic_light": "traffic light",
+    "trafficsign": "traffic sign",
+    "traffic_sign": "traffic sign"
 }
 
 CLASS_METRIC_DIMENSIONS = {
@@ -37,22 +50,64 @@ CLASS_METRIC_DIMENSIONS = {
         "height": 1.7,
         "depth": 0.45
     },
+    "rider": {
+        "width": 0.65,
+        "height": 1.65,
+        "depth": 0.6
+    },
     "car": {
         "width": 1.8,
         "height": 1.5,
         "depth": 4.2
     },
-    "bicycle": {
+    "bus": {
+        "width": 2.6,
+        "height": 3.2,
+        "depth": 9.0
+    },
+    "truck": {
+        "width": 2.5,
+        "height": 3.0,
+        "depth": 7.0
+    },
+    "bike": {
         "width": 0.55,
         "height": 1.15,
         "depth": 1.8
+    },
+    "motor": {
+        "width": 0.8,
+        "height": 1.25,
+        "depth": 2.1
+    },
+    "traffic light": {
+        "width": 0.35,
+        "height": 1.1,
+        "depth": 0.25
+    },
+    "traffic sign": {
+        "width": 0.7,
+        "height": 0.7,
+        "depth": 0.18
+    },
+    "train": {
+        "width": 3.0,
+        "height": 3.6,
+        "depth": 12.0
     }
 }
 
 CLASS_DRAW_COLORS = {
     "person": (255, 180, 60),
+    "rider": (220, 120, 255),
     "car": (30, 180, 255),
-    "bicycle": (100, 220, 100)
+    "bus": (0, 150, 255),
+    "truck": (0, 120, 220),
+    "bike": (100, 220, 100),
+    "motor": (90, 200, 180),
+    "traffic light": (50, 255, 255),
+    "traffic sign": (180, 255, 120),
+    "train": (255, 120, 120)
 }
 
 CUBOID_EDGE_INDEXES = [
@@ -70,10 +125,67 @@ CUBOID_EDGE_INDEXES = [
     (3, 7)
 ]
 
+POSE_MODEL_CANDIDATES = [
+    "weights/best.pt",
+    "best.pt",
+    "weights/yolo11n-pose.pt",
+    "yolo11n-pose.pt",
+    "weights/yolov8n-pose.pt",
+    "yolov8n-pose.pt"
+]
+
+COCO_PERSON_KEYPOINT_NAMES = [
+    "nose",
+    "left_eye",
+    "right_eye",
+    "left_ear",
+    "right_ear",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_ankle",
+    "right_ankle"
+]
+
+COCO_PERSON_SKELETON = [
+    [5, 7],
+    [7, 9],
+    [6, 8],
+    [8, 10],
+    [5, 6],
+    [5, 11],
+    [6, 12],
+    [11, 12],
+    [11, 13],
+    [13, 15],
+    [12, 14],
+    [14, 16],
+    [0, 1],
+    [0, 2],
+    [1, 3],
+    [2, 4],
+    [0, 5],
+    [0, 6]
+]
+
+MIN_POSE_MATCH_IOU = 0.15
+MIN_KEYPOINT_CONFIDENCE = 0.2
+HUMAN_POSE_LABELS = {"person", "rider"}
+
 
 def resolve_model_path(model_path: str) -> str:
     if model_path and os.path.exists(model_path):
         return model_path
+
+    if os.path.exists("weights/bdd100k_best.pt"):
+        return "weights/bdd100k_best.pt"
 
     if os.path.exists("weights/best.pt"):
         return "weights/best.pt"
@@ -82,6 +194,24 @@ def resolve_model_path(model_path: str) -> str:
         return "weights/yolo11n.pt"
 
     return "yolo11n.pt"
+
+
+def resolve_pose_model_path(pose_model_path: str | None = None) -> str:
+    candidates = []
+
+    if pose_model_path:
+        candidates.append(pose_model_path)
+
+    candidates.extend(POSE_MODEL_CANDIDATES)
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+
+    if pose_model_path:
+        return os.path.basename(pose_model_path)
+
+    return "yolo11n-pose.pt"
 
 
 def get_browser_mp4_temp_path(output_path: str) -> str:
@@ -410,6 +540,278 @@ def draw_3d_bbox_overlay(image, objects: list[dict]):
     return image
 
 
+def tensor_to_list(value: Any) -> list:
+    if value is None:
+        return []
+
+    try:
+        if hasattr(value, "cpu"):
+            value = value.cpu()
+        if hasattr(value, "tolist"):
+            return value.tolist()
+    except Exception:
+        return []
+
+    if isinstance(value, list):
+        return value
+
+    return []
+
+
+def bbox_from_xyxy(coords: list | tuple) -> dict | None:
+    if not coords or len(coords) < 4:
+        return None
+
+    x1, y1, x2, y2 = [float(value) for value in coords[:4]]
+
+    if not all(math.isfinite(value) for value in [x1, y1, x2, y2]):
+        return None
+
+    width = max(x2 - x1, 1.0)
+    height = max(y2 - y1, 1.0)
+
+    return {
+        "x1": round(x1, 2),
+        "y1": round(y1, 2),
+        "x2": round(x2, 2),
+        "y2": round(y2, 2),
+        "width": round(width, 2),
+        "height": round(height, 2)
+    }
+
+
+def bbox_iou(first: dict | None, second: dict | None) -> float:
+    if not first or not second:
+        return 0.0
+
+    x_left = max(float(first["x1"]), float(second["x1"]))
+    y_top = max(float(first["y1"]), float(second["y1"]))
+    x_right = min(float(first["x2"]), float(second["x2"]))
+    y_bottom = min(float(first["y2"]), float(second["y2"]))
+
+    intersection_width = max(x_right - x_left, 0.0)
+    intersection_height = max(y_bottom - y_top, 0.0)
+    intersection = intersection_width * intersection_height
+
+    if intersection <= 0:
+        return 0.0
+
+    first_area = max(float(first["width"]), 1.0) * max(float(first["height"]), 1.0)
+    second_area = max(float(second["width"]), 1.0) * max(float(second["height"]), 1.0)
+    union = first_area + second_area - intersection
+
+    if union <= 0:
+        return 0.0
+
+    return intersection / union
+
+
+def normalize_keypoint(raw_keypoint: list | tuple) -> list | None:
+    if not raw_keypoint or len(raw_keypoint) < 2:
+        return None
+
+    x = float(raw_keypoint[0])
+    y = float(raw_keypoint[1])
+    confidence = float(raw_keypoint[2]) if len(raw_keypoint) > 2 else 1.0
+
+    if not math.isfinite(x) or not math.isfinite(y):
+        return None
+
+    if not math.isfinite(confidence):
+        confidence = 0.0
+
+    return [
+        round(x, 2),
+        round(y, 2),
+        round(clamp_float(confidence, 0.0, 1.0), 4)
+    ]
+
+
+def keypoint_is_visible(keypoint: list | tuple) -> bool:
+    if not keypoint or len(keypoint) < 2:
+        return False
+
+    x = float(keypoint[0])
+    y = float(keypoint[1])
+    confidence = float(keypoint[2]) if len(keypoint) > 2 else 1.0
+
+    return (
+        math.isfinite(x)
+        and math.isfinite(y)
+        and x > 0
+        and y > 0
+        and confidence >= MIN_KEYPOINT_CONFIDENCE
+    )
+
+
+def bbox_from_keypoints(keypoints: list[list]) -> dict | None:
+    visible = [point for point in keypoints if keypoint_is_visible(point)]
+
+    if not visible:
+        return None
+
+    xs = [point[0] for point in visible]
+    ys = [point[1] for point in visible]
+
+    return bbox_from_xyxy([min(xs), min(ys), max(xs), max(ys)])
+
+
+def extract_pose_detections(result: Any) -> list[dict]:
+    if result is None or getattr(result, "keypoints", None) is None:
+        return []
+
+    keypoints_data = tensor_to_list(result.keypoints.data)
+    boxes = getattr(result, "boxes", None)
+    boxes_xyxy = tensor_to_list(boxes.xyxy if boxes is not None else None)
+    boxes_conf = tensor_to_list(boxes.conf if boxes is not None else None)
+
+    detections = []
+
+    for index, raw_keypoints in enumerate(keypoints_data):
+        keypoints = []
+
+        for raw_keypoint in raw_keypoints:
+            keypoint = normalize_keypoint(raw_keypoint)
+            if keypoint is not None:
+                keypoints.append(keypoint)
+
+        if not keypoints:
+            continue
+
+        bbox = bbox_from_xyxy(boxes_xyxy[index]) if index < len(boxes_xyxy) else None
+        if bbox is None:
+            bbox = bbox_from_keypoints(keypoints)
+
+        if bbox is None:
+            continue
+
+        visible_confidences = [
+            float(point[2])
+            for point in keypoints
+            if len(point) > 2 and float(point[2]) >= MIN_KEYPOINT_CONFIDENCE
+        ]
+        box_confidence = float(boxes_conf[index]) if index < len(boxes_conf) else None
+        pose_confidence = (
+            sum(visible_confidences) / len(visible_confidences)
+            if visible_confidences
+            else box_confidence
+        )
+
+        detections.append({
+            "bbox_2d": bbox,
+            "keypoints": keypoints,
+            "keypoint_names": COCO_PERSON_KEYPOINT_NAMES,
+            "skeleton": COCO_PERSON_SKELETON,
+            "pose_confidence": round(float(pose_confidence or 0.0), 4)
+        })
+
+    return detections
+
+
+def attach_pose_to_human_objects(objects: list[dict], pose_detections: list[dict]) -> None:
+    if not objects or not pose_detections:
+        return
+
+    used_pose_indexes = set()
+
+    for obj in objects:
+        if obj.get("label") not in HUMAN_POSE_LABELS:
+            continue
+
+        bbox = obj.get("bbox_2d")
+        best_index = None
+        best_iou = 0.0
+
+        for index, pose in enumerate(pose_detections):
+            if index in used_pose_indexes:
+                continue
+
+            current_iou = bbox_iou(bbox, pose.get("bbox_2d"))
+            if current_iou > best_iou:
+                best_iou = current_iou
+                best_index = index
+
+        if best_index is None or best_iou < MIN_POSE_MATCH_IOU:
+            continue
+
+        pose = pose_detections[best_index]
+        used_pose_indexes.add(best_index)
+        obj["keypoints"] = pose["keypoints"]
+        obj["keypoint_names"] = pose["keypoint_names"]
+        obj["skeleton"] = pose["skeleton"]
+        obj["pose_confidence"] = pose["pose_confidence"]
+
+
+def predict_pose_detections(
+    pose_model: YOLO | None,
+    source: Any,
+    confidence: float,
+    iou: float
+) -> list[dict]:
+    if pose_model is None:
+        return []
+
+    results = pose_model.predict(
+        source=source,
+        conf=confidence,
+        iou=iou,
+        verbose=False
+    )
+
+    if not results:
+        return []
+
+    return extract_pose_detections(results[0])
+
+
+def draw_pose_overlay(image, objects: list[dict]):
+    if image is None or not objects:
+        return image
+
+    frame_height, frame_width = image.shape[:2]
+    thickness = max(2, round(min(frame_width, frame_height) / 360))
+    radius = max(3, round(min(frame_width, frame_height) / 220))
+
+    for obj in objects:
+        if obj.get("label") not in HUMAN_POSE_LABELS:
+            continue
+
+        keypoints = obj.get("keypoints") or []
+        if not keypoints:
+            continue
+
+        skeleton = obj.get("skeleton") or COCO_PERSON_SKELETON
+
+        for start, end in skeleton:
+            if start >= len(keypoints) or end >= len(keypoints):
+                continue
+
+            first = keypoints[start]
+            second = keypoints[end]
+
+            if not keypoint_is_visible(first) or not keypoint_is_visible(second):
+                continue
+
+            cv2.line(
+                image,
+                (int(round(first[0])), int(round(first[1]))),
+                (int(round(second[0])), int(round(second[1]))),
+                (80, 255, 120),
+                thickness,
+                cv2.LINE_AA
+            )
+
+        for keypoint in keypoints:
+            if not keypoint_is_visible(keypoint):
+                continue
+
+            center = int(round(keypoint[0])), int(round(keypoint[1]))
+            cv2.circle(image, center, radius + 1, (0, 0, 0), -1, cv2.LINE_AA)
+            cv2.circle(image, center, radius, (255, 80, 255), -1, cv2.LINE_AA)
+
+    return image
+
+
 def build_object_from_box(
     box: Any,
     model_names: dict,
@@ -472,15 +874,18 @@ def build_object_from_box(
 def detect_image(
     image_path: str,
     model_path: str,
+    pose_model_path: str | None = None,
     confidence: float = 0.25,
     iou: float = 0.45,
     enable_3d: bool = False,
+    enable_pose: bool = False,
     output_path: str | None = None
 ) -> dict:
     start_time = time.time()
 
     resolved_model_path = resolve_model_path(model_path)
     model = YOLO(resolved_model_path)
+    pose_model = YOLO(resolve_pose_model_path(pose_model_path)) if enable_pose else None
 
     results = model.predict(
         source=image_path,
@@ -506,6 +911,15 @@ def detect_image(
         if obj:
             objects.append(obj)
 
+    if enable_pose:
+        pose_detections = predict_pose_detections(
+            pose_model=pose_model,
+            source=image_path,
+            confidence=confidence,
+            iou=iou
+        )
+        attach_pose_to_human_objects(objects, pose_detections)
+
     result_image_url = None
 
     if output_path:
@@ -514,6 +928,8 @@ def detect_image(
         annotated_image = result.plot()
         if enable_3d:
             annotated_image = draw_3d_bbox_overlay(annotated_image, objects)
+        if enable_pose:
+            annotated_image = draw_pose_overlay(annotated_image, objects)
         cv2.imwrite(output_path, annotated_image)
 
         result_image_url = "/outputs/images/" + os.path.basename(output_path)
@@ -526,7 +942,8 @@ def detect_image(
             f"Class={obj['label']} | "
             f"Conf={obj['confidence']} | "
             f"BBox2D=[{obj['bbox_2d']['x1']},{obj['bbox_2d']['y1']},{obj['bbox_2d']['x2']},{obj['bbox_2d']['y2']}] | "
-            f"Depth={obj['depth']}"
+            f"Depth={obj['depth']} | "
+            f"Keypoints={len(obj.get('keypoints') or [])}"
         )
     print(f"[DONE] processing_time_ms={processing_time_ms}")
 
@@ -550,10 +967,12 @@ def detect_image(
 def detect_video(
     video_path: str,
     model_path: str,
+    pose_model_path: str | None = None,
     confidence: float = 0.25,
     iou: float = 0.45,
     enable_tracking: bool = True,
     enable_3d: bool = False,
+    enable_pose: bool = False,
     output_path: str | None = None,
     progress_callback: Callable[[dict], None] | None = None
 ) -> dict:
@@ -584,6 +1003,7 @@ def detect_video(
 
     resolved_model_path = resolve_model_path(model_path)
     model = YOLO(resolved_model_path)
+    pose_model = YOLO(resolve_pose_model_path(pose_model_path)) if enable_pose else None
 
     result_video_url = None
     temp_output_path = None
@@ -662,10 +1082,23 @@ def detect_video(
                     if obj:
                         objects.append(obj)
 
+            if enable_pose:
+                pose_source = getattr(result, "orig_img", None)
+                if pose_source is not None:
+                    pose_detections = predict_pose_detections(
+                        pose_model=pose_model,
+                        source=pose_source,
+                        confidence=confidence,
+                        iou=iou
+                    )
+                    attach_pose_to_human_objects(objects, pose_detections)
+
             if video_writer is not None:
                 annotated_frame = result.plot()
                 if enable_3d:
                     annotated_frame = draw_3d_bbox_overlay(annotated_frame, objects)
+                if enable_pose:
+                    annotated_frame = draw_pose_overlay(annotated_frame, objects)
                 annotated_frame = prepare_frame_for_video_writer(
                     frame=annotated_frame,
                     frame_index=frame_index,

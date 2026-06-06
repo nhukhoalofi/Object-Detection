@@ -12,10 +12,12 @@ def process_video_job(
     job_id: str,
     video_path: str,
     model_path: str,
+    pose_model_path: str,
     confidence: float,
     iou: float,
     enable_tracking: bool,
     enable_3d: bool,
+    enable_pose: bool,
     output_video_path: str | None = None
 ):
     db = SessionLocal()
@@ -78,6 +80,8 @@ def process_video_job(
             iou=iou,
             enable_tracking=enable_tracking,
             enable_3d=enable_3d,
+            enable_pose=enable_pose,
+            pose_model_path=pose_model_path,
             output_path=output_video_path,
             progress_callback=update_progress
         )

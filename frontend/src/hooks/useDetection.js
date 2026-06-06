@@ -36,7 +36,6 @@ export function useDetection() {
       if (isImageFile(actualFile)) {
         res = await detectionApi.detectImage({
           file: actualFile,
-          modelId: options.model_id,
           confidence: options.confidence,
           iou: options.iou,
           enable3d: options.enable_3d,
@@ -45,7 +44,6 @@ export function useDetection() {
       } else if (isVideoFile(actualFile)) {
         res = await detectionApi.detectVideo({
           file: actualFile,
-          modelId: options.model_id,
           confidence: options.confidence,
           iou: options.iou,
           enableTracking: options.enable_tracking,

@@ -12,6 +12,7 @@ import DetectionTable from '../components/result/DetectionTable.jsx'
 import JsonOutputPanel from '../components/result/JsonOutputPanel.jsx'
 import ThreeDPanel from '../components/result/ThreeDPanel.jsx'
 import PoseEstimationPanel from '../components/result/PoseEstimationPanel.jsx'
+import Pose3DPanel from '../components/result/Pose3DPanel.jsx'
 import { useDetection } from '../hooks/useDetection.js'
 import { useDetectionJob } from '../hooks/useDetectionJob.js'
 import { formatConfidence, formatMs } from '../utils/formatUtils.js'
@@ -166,6 +167,19 @@ export default function HomePage() {
       content: (
         <Card className="px-0 py-0 border-none shadow-none">
           <PoseEstimationPanel objects={displayObjects} />
+        </Card>
+      )
+    },
+    {
+      label: 'Pose 3D',
+      content: (
+        <Card title="Pose 3D">
+          <Pose3DPanel
+            objects={displayObjects}
+            frames={displayResult?.frames}
+            fps={fps}
+            mediaType={displayResult?.mediaType ?? fileType}
+          />
         </Card>
       )
     },

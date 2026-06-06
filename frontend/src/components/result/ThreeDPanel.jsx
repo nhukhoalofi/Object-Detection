@@ -4,8 +4,16 @@ import { getClassNameVI } from '../../utils/formatUtils.js'
 
 const CLASS_COLORS = {
   person: '#60a5fa',
+  rider: '#c084fc',
   car: '#f59e0b',
+  bus: '#fb923c',
+  truck: '#f97316',
+  bike: '#34d399',
   bicycle: '#34d399',
+  motor: '#2dd4bf',
+  'traffic light': '#facc15',
+  'traffic sign': '#a3e635',
+  train: '#f87171',
 }
 
 const DEFAULT_IMAGE_WIDTH = 640
@@ -13,7 +21,6 @@ const DEFAULT_IMAGE_HEIGHT = 480
 const DEFAULT_VIDEO_FPS = 30
 const MISSING_FRAME_HOLD_SECONDS = 0.25
 const MAX_OBJECTS = 24
-
 function toNumber(value, fallback = 0) {
   const num = Number(value)
   return Number.isFinite(num) ? num : fallback
@@ -89,12 +96,40 @@ function classDimensions(label, bboxHeightRatio) {
     return { width: 0.65, height: visualHeight, depth: 0.45 }
   }
 
+  if (label === 'rider') {
+    return { width: 0.7, height: visualHeight, depth: 0.6 }
+  }
+
   if (label === 'car') {
     return { width: 2.0, height: clamp(visualHeight * 0.7, 1.1, 1.7), depth: 3.2 }
   }
 
-  if (label === 'bicycle') {
+  if (label === 'bus') {
+    return { width: 2.6, height: clamp(visualHeight, 2.0, 3.2), depth: 6.2 }
+  }
+
+  if (label === 'truck') {
+    return { width: 2.5, height: clamp(visualHeight, 2.0, 3.0), depth: 5.5 }
+  }
+
+  if (label === 'bike' || label === 'bicycle') {
     return { width: 1.5, height: clamp(visualHeight * 0.85, 1.0, 1.8), depth: 0.55 }
+  }
+
+  if (label === 'motor') {
+    return { width: 1.0, height: clamp(visualHeight * 0.9, 1.0, 1.8), depth: 1.8 }
+  }
+
+  if (label === 'traffic light') {
+    return { width: 0.35, height: clamp(visualHeight, 0.8, 1.8), depth: 0.25 }
+  }
+
+  if (label === 'traffic sign') {
+    return { width: 0.8, height: clamp(visualHeight * 0.45, 0.5, 1.2), depth: 0.2 }
+  }
+
+  if (label === 'train') {
+    return { width: 3.0, height: clamp(visualHeight, 2.0, 3.6), depth: 7.5 }
   }
 
   return { width: 1.0, height: visualHeight, depth: 0.8 }
@@ -141,6 +176,11 @@ function normalize3DObject(obj, index, imageWidth, imageHeight) {
     height: clamp(toNumber(sizeSource?.height, fallback?.size?.height ?? 1.6), 0.5, 4.0),
     depth: clamp(toNumber(sizeSource?.depth, fallback?.size?.depth ?? 0.8), 0.25, 5.0),
   }
+  const center = {
+    x: clamp(toNumber(centerSource?.x, fallback?.center?.x ?? 0), -9, 9),
+    y: toNumber(centerSource?.y, fallback?.center?.y ?? 0),
+    z: clamp(toNumber(centerSource?.z, depth), 0.8, 18),
+  }
 
   return {
     id: obj.id ?? obj.track_id ?? index + 1,
@@ -151,11 +191,7 @@ function normalize3DObject(obj, index, imageWidth, imageHeight) {
     color: CLASS_COLORS[label] || '#a78bfa',
     source,
     depth,
-    center: {
-      x: clamp(toNumber(centerSource?.x, fallback?.center?.x ?? 0), -9, 9),
-      y: toNumber(centerSource?.y, fallback?.center?.y ?? 0),
-      z: clamp(toNumber(centerSource?.z, depth), 0.8, 18),
-    },
+    center,
     size,
   }
 }
@@ -376,8 +412,6 @@ export default function ThreeDPanel({
       && missingFrameGap <= holdMissingFrames
   )
   const renderSceneObjects = shouldHoldLastScene ? lastSceneSnapshot.objects : sceneObjects
-  const bbox3dCount = renderSceneObjects.filter((obj) => obj.source === 'bbox_3d').length
-  const fallbackCount = renderSceneObjects.length - bbox3dCount
 
   useEffect(() => {
     if (!isVideo || !sceneObjects.length) return
@@ -432,11 +466,11 @@ export default function ThreeDPanel({
           />
         )}
         <EmptyScene
-          title={hasObjectsInFrame ? 'Frame này thiếu dữ liệu 3D' : 'Không có vật thể trong frame này'}
+          title={hasObjectsInFrame ? 'Chưa có vị trí 3D' : 'Không có vật thể ở thời điểm này'}
           message={
             hasObjectsInFrame
-              ? 'Object cần có bbox_3d hoặc bbox_2d để tạo vị trí trong scene.'
-              : 'YOLO không phát hiện person, car hoặc bicycle ở thời điểm này.'
+              ? 'Vật thể này chưa có đủ dữ liệu vị trí để hiển thị trong không gian 3D.'
+              : 'Không phát hiện vật thể phù hợp ở thời điểm này.'
           }
         />
       </div>
@@ -445,40 +479,20 @@ export default function ThreeDPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5">
-        <div>
-          <p className="text-sm font-semibold text-neutral-800">Scene 3D dạng isometric</p>
-          <p className="text-xs text-neutral-500">
-            {shouldHoldLastScene
-              ? `Đang giữ dữ liệu từ frame ${lastSceneSnapshot.frameIndex + 1} để tránh nhấp nháy khi mất detection ngắn.`
-              : isVideo
-              ? 'Video được dựng theo từng frame để không trộn object của toàn bộ clip.'
-              : 'Ưu tiên bbox_3d từ backend; nếu thiếu thì dựng nhanh từ bbox_2d để xem demo.'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs font-mono">
+      <div className="flex flex-wrap justify-end gap-2 text-xs font-mono">
+        <span className="rounded border border-neutral-200 bg-white px-2 py-1 text-neutral-700">
+          {renderSceneObjects.length} đối tượng
+        </span>
+        {isVideo && (
           <span className="rounded border border-neutral-200 bg-white px-2 py-1 text-neutral-700">
-            {renderSceneObjects.length} đối tượng
+            Khung {frameIndex + 1}/{maxFrameIndex + 1}
           </span>
-          {isVideo && (
-            <span className="rounded border border-neutral-200 bg-white px-2 py-1 text-neutral-700">
-              frame {frameIndex + 1}/{maxFrameIndex + 1}
-            </span>
-          )}
-          <span className="rounded border border-neutral-200 bg-white px-2 py-1 text-neutral-700">
-            {bbox3dCount} bbox_3d
+        )}
+        {shouldHoldLastScene && (
+          <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
+            Đang giữ khung {lastSceneSnapshot.frameIndex + 1}
           </span>
-          {fallbackCount > 0 && (
-            <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">
-              {fallbackCount} từ bbox_2d
-            </span>
-          )}
-          {shouldHoldLastScene && (
-            <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
-              giữ frame {lastSceneSnapshot.frameIndex + 1}
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
       {isVideo && (
@@ -498,7 +512,7 @@ export default function ThreeDPanel({
         </div>
         {shouldHoldLastScene && (
           <div className="absolute left-3 top-3 z-10 rounded border border-blue-300/40 bg-blue-950/80 px-3 py-1.5 text-xs font-medium text-blue-100 shadow-sm">
-            Đang giữ dữ liệu từ frame {lastSceneSnapshot.frameIndex + 1}
+            Đang giữ khung {lastSceneSnapshot.frameIndex + 1}
           </div>
         )}
         <svg
@@ -583,7 +597,7 @@ function VideoFrameControls({
           onClick={() => onPlayingChange(!playing)}
           disabled={!canScrub}
         >
-          {playing ? 'Tạm dừng' : 'Phát 3D'}
+          {playing ? 'Tạm dừng' : 'Phát'}
         </button>
         <button
           type="button"
@@ -591,7 +605,7 @@ function VideoFrameControls({
           onClick={() => onFrameIndexChange(Math.max(frameIndex - 1, 0))}
           disabled={!canScrub || frameIndex <= 0}
         >
-          Prev
+          Trước
         </button>
         <button
           type="button"
@@ -599,7 +613,7 @@ function VideoFrameControls({
           onClick={() => onFrameIndexChange(Math.min(frameIndex + 1, maxFrameIndex))}
           disabled={!canScrub || frameIndex >= maxFrameIndex}
         >
-          Next
+          Sau
         </button>
       </div>
       <input
@@ -613,7 +627,7 @@ function VideoFrameControls({
         className="min-w-0 flex-1 accent-neutral-900"
       />
       <div className="flex items-center justify-between gap-3 text-xs font-mono text-neutral-600 sm:min-w-[170px]">
-        <span>frame {frameIndex + 1}</span>
+        <span>Khung {frameIndex + 1}</span>
         <span>{toNumber(timestamp, 0).toFixed(2)}s</span>
       </div>
     </div>

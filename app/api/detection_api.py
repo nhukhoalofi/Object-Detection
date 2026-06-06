@@ -10,12 +10,31 @@ from app.config import settings
 from app.database import get_db
 from app.models.media_file import MediaFile
 from app.models.detection_job import DetectionJob
+from app.models.model_version import ModelVersion
 from app.services.file_service import validate_image_file, validate_video_file, save_upload_file
 from app.services.detection_service import process_video_job
 from app.ai.inference import detect_image
 
 
 router = APIRouter()
+
+
+def resolve_detection_model_path(db: Session, model_id: int | None) -> str:
+    if model_id is None:
+        return settings.default_model_path
+
+    model = db.query(ModelVersion).filter(
+        ModelVersion.id == model_id,
+        ModelVersion.is_active.is_(True)
+    ).first()
+
+    if not model:
+        return settings.default_model_path
+
+    if "detect" not in str(model.task or "").lower():
+        return settings.default_model_path
+
+    return model.weight_path or settings.default_model_path
 
 
 @router.post("/detections/image")
@@ -68,13 +87,16 @@ def detect_image_api(
 
         output_filename = f"{job_id}_detected.jpg"
         output_path = os.path.join("outputs", "images", output_filename)
+        detection_model_path = resolve_detection_model_path(db, model_id)
 
         result = detect_image(
             image_path=media.file_path,
-            model_path=settings.default_model_path,
+            model_path=detection_model_path,
+            pose_model_path=settings.default_pose_model_path,
             confidence=confidence,
             iou=iou,
             enable_3d=enable_3d,
+            enable_pose=enable_pose,
             output_path=output_path
         )
 
@@ -178,16 +200,19 @@ def detect_video_api(
         output_video_filename = f"{job_id}_detected.mp4"
         output_video_path = os.path.join("outputs", "videos", output_video_filename)
         result_video_url = f"/outputs/videos/{output_video_filename}"
+        detection_model_path = resolve_detection_model_path(db, model_id)
 
         background_tasks.add_task(
             process_video_job,
             job_id=job_id,
             video_path=media.file_path,
-            model_path=settings.default_model_path,
+            model_path=detection_model_path,
+            pose_model_path=settings.default_pose_model_path,
             confidence=confidence,
             iou=iou,
             enable_tracking=enable_tracking,
             enable_3d=enable_3d,
+            enable_pose=enable_pose,
             output_video_path=output_video_path
         )
 

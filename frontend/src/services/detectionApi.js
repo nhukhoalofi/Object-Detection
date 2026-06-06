@@ -11,18 +11,6 @@ function getActualFile(input) {
   return actualFile
 }
 
-function appendModelId(formData, modelId) {
-  if (modelId === undefined || modelId === null || modelId === '') return
-
-  const numericModelId = Number(modelId)
-
-  if (Number.isInteger(numericModelId)) {
-    formData.append('model_id', String(numericModelId))
-  } else {
-    console.warn('Bỏ qua model_id không hợp lệ:', modelId)
-  }
-}
-
 function debugFormData(formData) {
   console.log('--- FormData Payload ---')
   for (const [key, value] of formData.entries()) {
@@ -42,7 +30,6 @@ function toNumberString(value, fallback) {
 export const detectionApi = {
   detectImage({
     file,
-    modelId,
     confidence = 0.25,
     iou = 0.45,
     enable3d = false,
@@ -52,7 +39,6 @@ export const detectionApi = {
 
     const formData = new FormData()
     formData.append('file', actualFile)
-    appendModelId(formData, modelId)
     formData.append('confidence', toNumberString(confidence, 0.25))
     formData.append('iou', toNumberString(iou, 0.45))
     formData.append('enable_3d', String(Boolean(enable3d)))
@@ -65,7 +51,6 @@ export const detectionApi = {
 
   detectVideo({
     file,
-    modelId,
     confidence = 0.25,
     iou = 0.45,
     enableTracking = true,
@@ -76,7 +61,6 @@ export const detectionApi = {
 
     const formData = new FormData()
     formData.append('file', actualFile)
-    appendModelId(formData, modelId)
     formData.append('confidence', toNumberString(confidence, 0.25))
     formData.append('iou', toNumberString(iou, 0.45))
     formData.append('enable_tracking', String(Boolean(enableTracking)))

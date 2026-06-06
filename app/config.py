@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     output_dir: str = "outputs"
     weights_dir: str = "weights"
 
-    default_model_path: str = "weights/best.pt"
+    default_model_path: str = "weights/bdd100k_best.pt"
+    default_pose_model_path: str = "weights/best.pt"
     default_confidence: float = 0.25
     default_iou: float = 0.45
 

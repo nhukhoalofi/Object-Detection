@@ -54,6 +54,7 @@ export default function BoundingBox2D({ obj, scaleX, scaleY }) {
   const nameRaw = obj?.class_name ?? obj?.className ?? obj?.label ?? obj?.name ?? 'Unknown'
   const nameVI = getClassNameVI(nameRaw)
   const confPct = typeof obj?.confidence === 'number' ? Math.round(obj.confidence * 100) : null
+  const hasTrackId = obj?.track_id !== null && obj?.track_id !== undefined
 
   const left = bbox.x1 * scaleX
   const top = bbox.y1 * scaleY
@@ -94,7 +95,7 @@ export default function BoundingBox2D({ obj, scaleX, scaleY }) {
         className="absolute -top-5 left-0 px-1.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap"
         style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ffffff' }}
       >
-        {nameVI}{confPct !== null ? ` ${confPct}%` : ''}{obj.track_id !== undefined ? ` #${obj.track_id}` : ''}
+        {nameVI}{confPct !== null ? ` ${confPct}%` : ''}{hasTrackId ? ` #${obj.track_id}` : ''}
       </div>
     </div>
   )

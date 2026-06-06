@@ -3,6 +3,24 @@ import BoundingBox2D from './BoundingBox2D.jsx'
 
 const DEFAULT_IMAGE_W = 1280
 const DEFAULT_IMAGE_H = 720
+const MIN_KEYPOINT_CONFIDENCE = 0.2
+
+function isVisibleKeypoint(point) {
+  if (!Array.isArray(point) || point.length < 2) return false
+
+  const x = Number(point[0])
+  const y = Number(point[1])
+  const confidence = point.length > 2 ? Number(point[2]) : 1
+
+  return (
+    Number.isFinite(x)
+    && Number.isFinite(y)
+    && Number.isFinite(confidence)
+    && x > 0
+    && y > 0
+    && confidence >= MIN_KEYPOINT_CONFIDENCE
+  )
+}
 
 export default function DetectionCanvas2D({ previewUrl, fileType, objects = [], frames = [], fps = null, imageWidth, imageHeight }) {
   const containerRef = useRef(null)
@@ -120,13 +138,16 @@ export default function DetectionCanvas2D({ previewUrl, fileType, objects = [], 
         ))}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           {safeObjects.map((obj, i) => {
-            if (!obj.keypoints) return null
+            const keypoints = Array.isArray(obj.keypoints) ? obj.keypoints : []
+            if (!keypoints.length) return null
+
             return (
               <g key={`pose-${i}`}>
                 {obj.skeleton?.map((pair, j) => {
-                  const pt1 = obj.keypoints[pair[0]]
-                  const pt2 = obj.keypoints[pair[1]]
-                  if (!pt1 || !pt2) return null
+                  const pt1 = keypoints[pair[0]]
+                  const pt2 = keypoints[pair[1]]
+                  if (!isVisibleKeypoint(pt1) || !isVisibleKeypoint(pt2)) return null
+
                   return (
                     <line 
                       key={`skel-${j}`} 
@@ -136,13 +157,21 @@ export default function DetectionCanvas2D({ previewUrl, fileType, objects = [], 
                     />
                   )
                 })}
-                {obj.keypoints.map((pt, j) => (
-                  <circle 
-                    key={`pt-${j}`} 
-                    cx={pt[0] * scaleX} cy={pt[1] * scaleY} 
-                    r={3} fill="#ef4444" stroke="#ffffff" strokeWidth={1}
-                  />
-                ))}
+                {keypoints.map((pt, j) => {
+                  if (!isVisibleKeypoint(pt)) return null
+
+                  return (
+                    <circle
+                      key={`pt-${j}`}
+                      cx={pt[0] * scaleX}
+                      cy={pt[1] * scaleY}
+                      r={3}
+                      fill="#ef4444"
+                      stroke="#ffffff"
+                      strokeWidth={1}
+                    />
+                  )
+                })}
               </g>
             )
           })}

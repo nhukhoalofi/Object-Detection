@@ -1,7 +1,15 @@
 const CLASS_NAMES_VI = {
   person: 'Người',
-  bicycle: 'Xe đạp',
+  rider: 'Người lái',
   car: 'Ô tô',
+  bus: 'Xe buýt',
+  truck: 'Xe tải',
+  bike: 'Xe đạp',
+  bicycle: 'Xe đạp',
+  motor: 'Xe máy',
+  'traffic light': 'Đèn giao thông',
+  'traffic sign': 'Biển báo',
+  train: 'Tàu',
 }
 
 export function getClassNameVI(className) {
