@@ -85,6 +85,34 @@ weights/best.pt
 weights/model_metadata.json
 ```
 
+### 3.1. Tải model weights
+
+Tải đủ 2 file model `.pt` từ Google Drive: [Model weights](https://drive.google.com/drive/folders/1q4zwsDe3MuvPNtVVJxKyc_tcvf6NM9LY?fbclid=IwY2xjawSTlMpleHRuA2FlbQIxMABicmlkETFKajNYWEVKZHpOalpYOUFnc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABHjh59h0UUzPshvy4DV39d71Mk6lJNVWI43w2BltKJKp330FcZqI1IoyQb8O8_aem_rU8tTr9yuP6KKSUsQvfFhQ).
+
+Cần tải đủ các file sau:
+
+- `bdd100k_best.pt`
+- `best.pt`
+
+Sau khi tải xong, đặt cả hai file vào thư mục `weights/` ở gốc project:
+
+```text
+ObjectDetection-BE/
++-- weights/
+    +-- bdd100k_best.pt
+    +-- best.pt
+    +-- model_metadata.json
+```
+
+Kiểm tra lại bằng PowerShell:
+
+```powershell
+Test-Path weights\bdd100k_best.pt
+Test-Path weights\best.pt
+```
+
+Cả hai lệnh nên trả về `True`.
+
 Không đổi tên hoặc di chuyển các file `.pt` nếu bạn không cập nhật lại `.env` và dữ liệu trong database.
 
 ## 4. Chuẩn bị SQL Server
